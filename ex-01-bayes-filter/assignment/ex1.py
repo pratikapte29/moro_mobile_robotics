@@ -22,11 +22,82 @@ def plot_belief(belief):
     ax.title.set_text("Histogram")
 
 
-# def motion_model(action, belief):
-    # add code here
-    
-# def sensor_model(observation, belief, world):
+def input_operations(move, model):
+    """_summary_
+
+    Args:
+        move (str): Input action (either F or B)
+        model (str): Model to be used (motion, sensor, recursive)
+    """
+
+    if model == "motion":
+        new_belief = motion_model(move, belief)
+    elif model == "sensor":
+        new_belief = sensor_model(move, belief, world)
+    elif model == "recursive":
+        new_belief = recursive_bayes_filter(move, observations, belief, world)
+    else:
+        raise ValueError("Invalid model. Use 'motion', 'sensor', or 'recursive'.")
+
+    return new_belief
+
+
+def motion_model(action, belief):
     # add code here
 
-# def recursive_bayes_filter(actions, observations, belief, world):
+    len_belief = len(belief)
+
+    new_belief = np.zeros(len_belief)
+    prob_correct = 0.75
+    prob_no_move = 0.15
+    prob_wrong = 0.10
+
+    for i in range(len_belief):
+
+        if action == "F":
+
+            # correctly moved
+            if i + 1 < len_belief:
+                new_belief[i + 1] += belief[i] * prob_correct
+            else:
+                new_belief[i] += belief[i] * prob_correct
+
+            # no move (robot stayed in the same place)
+            new_belief[i] += belief[i] * prob_no_move
+
+            # robot moved in the opposite direction
+            if i - 1 >= 0:
+                new_belief[i - 1] += belief[i] * prob_wrong
+            else:
+                new_belief[i] += belief[i] * prob_wrong
+
+        elif action == "B":
+
+            # correctly moved
+            if i - 1 >= 0:
+                new_belief[i - 1] += belief[i] * prob_correct
+            else:
+                new_belief[i] += belief[i] * prob_correct
+
+            # no move (robot stayed in the same place)
+            new_belief[i] += belief[i] * prob_no_move
+
+            # robot moved in the opposite direction
+            if i + 1 < len_belief:
+                new_belief[i + 1] += belief[i] * prob_wrong
+            else:
+                new_belief[i] += belief[i] * prob_wrong
+        
+        else:
+            raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
+        
+    return new_belief
+
+def sensor_model(observation, belief, world):
     # add code here
+    pass 
+
+def recursive_bayes_filter(actions, observations, belief, world):
+    # add code here
+    pass 
+
