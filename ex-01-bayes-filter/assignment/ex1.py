@@ -22,26 +22,6 @@ def plot_belief(belief):
     ax.title.set_text("Histogram")
 
 
-def input_operations(move, model):
-    """_summary_
-
-    Args:
-        move (str): Input action (either F or B)
-        model (str): Model to be used (motion, sensor, recursive)
-    """
-
-    if model == "motion":
-        new_belief = motion_model(move, belief)
-    elif model == "sensor":
-        new_belief = sensor_model(move, belief, world)
-    elif model == "recursive":
-        new_belief = recursive_bayes_filter(move, observations, belief, world)
-    else:
-        raise ValueError("Invalid model. Use 'motion', 'sensor', or 'recursive'.")
-
-    return new_belief
-
-
 def motion_model(action, belief):
     # add code here
 
@@ -91,7 +71,7 @@ def motion_model(action, belief):
         else:
             raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
         
-    return new_belief
+    return new_belief / np.sum(new_belief)
 
 def sensor_model(observation, belief, world):
     # add code here
