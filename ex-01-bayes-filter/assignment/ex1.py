@@ -23,55 +23,59 @@ def plot_belief(belief):
 
 
 def motion_model(action, belief):
-    # add code here
-
     len_belief = len(belief)
-
     new_belief = np.zeros(len_belief)
+    
     prob_correct = 0.75
     prob_no_move = 0.15
     prob_wrong = 0.10
 
     for i in range(len_belief):
-
+        # Skip if there's no probability mass at this position
+        if belief[i] == 0:
+            continue
+            
         if action == "F":
-
-            # correctly moved
+            # Correctly moved forward
             if i + 1 < len_belief:
                 new_belief[i + 1] += belief[i] * prob_correct
             else:
+                # At right border: can't move forward, so stay
                 new_belief[i] += belief[i] * prob_correct
 
-            # no move (robot stayed in the same place)
+            # No move (robot stayed in the same place)
             new_belief[i] += belief[i] * prob_no_move
 
-            # robot moved in the opposite direction
+            # Robot moved backward (opposite direction)
             if i - 1 >= 0:
                 new_belief[i - 1] += belief[i] * prob_wrong
             else:
+                # At left border: can't move backward, so stay
                 new_belief[i] += belief[i] * prob_wrong
 
         elif action == "B":
-
-            # correctly moved
+            # Correctly moved backward
             if i - 1 >= 0:
                 new_belief[i - 1] += belief[i] * prob_correct
             else:
+                # At left border: can't move backward, so stay
                 new_belief[i] += belief[i] * prob_correct
 
-            # no move (robot stayed in the same place)
+            # No move (robot stayed in the same place)
             new_belief[i] += belief[i] * prob_no_move
 
-            # robot moved in the opposite direction
+            # Robot moved forward (opposite direction)
             if i + 1 < len_belief:
                 new_belief[i + 1] += belief[i] * prob_wrong
             else:
+                # At right border: can't move forward, so stay
                 new_belief[i] += belief[i] * prob_wrong
         
         else:
             raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
-        
-    return new_belief / np.sum(new_belief)
+    
+    # Normalize (though it should already sum to 1)
+    return new_belief # / np.sum(new_belief)
 
 def sensor_model(observation, belief, world):
     # add code here
