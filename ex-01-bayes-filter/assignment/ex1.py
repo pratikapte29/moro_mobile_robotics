@@ -31,10 +31,7 @@ def motion_model(action, belief):
     prob_wrong = 0.10
 
     for i in range(len_belief):
-        # Skip if there's no probability mass at this position
-        if belief[i] == 0:
-            continue
-            
+
         if action == "F":
             # Correctly moved forward
             if i + 1 < len_belief:
@@ -74,8 +71,8 @@ def motion_model(action, belief):
         else:
             raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
     
-    # Normalize (though it should already sum to 1)
-    return new_belief # / np.sum(new_belief)
+    # Normalize 
+    return new_belief / np.sum(new_belief)
 
 def sensor_model(observation, belief, world):
     # add code here
