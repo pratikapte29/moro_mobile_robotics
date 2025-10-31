@@ -71,14 +71,50 @@ def motion_model(action, belief):
         else:
             raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
     
-    # Normalize 
-    return new_belief / np.sum(new_belief)
+    return new_belief 
+
 
 def sensor_model(observation, belief, world):
-    # add code here
-    pass 
+    len_belief = len(belief)
+    new_belief = np.zeros(len_belief)
+    
+    # Sensor probabilities
+    prob_white_correct = 0.75  
+    prob_blue_correct = 0.85   
+    
+    for i in range(len_belief):
+        # Get actual color at position i
+        actual_color = world[i]
+        
+        # Calculate likelihood: P(observation | at position i)
+        if actual_color == observation:
+            # Colors match - sensor detected correctly
+            if actual_color == 1:  # white
+                likelihood = prob_white_correct  # 0.75
+            else:  # blue (0)
+                likelihood = prob_blue_correct   # 0.85
+        else:
+            # Colors don't match - sensor made an error
+            if actual_color == 1:  # actual white, but observed blue
+                likelihood = 1 - prob_white_correct  # 0.25
+            else:  # actual blue, but observed white
+                likelihood = 1 - prob_blue_correct   # 0.15
+        
+        # THIS IS WHERE YOU MULTIPLY!
+        new_belief[i] = likelihood * belief[i]
+    
+    # Normalize so probabilities sum to 1
+    return new_belief / np.sum(new_belief)
+
 
 def recursive_bayes_filter(actions, observations, belief, world):
-    # add code here
-    pass 
+    
+    for action, observation in zip(actions, observations):
+        # Step 1: PREDICTION - apply motion model
+        belief = motion_model(action, belief)
+        
+        # Step 2: CORRECTION - apply sensor model
+        belief = sensor_model(observation, belief, world)
+    
+    return belief
 
