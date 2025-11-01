@@ -23,55 +23,39 @@ def plot_belief(belief):
 
 
 def motion_model(action, belief):
-    len_belief = len(belief)
-    new_belief = np.zeros(len_belief)
+    n = len(belief)
+    new_belief = np.zeros(n)
     
     prob_correct = 0.75
-    prob_no_move = 0.15
-    prob_wrong = 0.10
-
-    for i in range(len_belief):
-
-        if action == "F":
-            # Correctly moved forward
-            if i + 1 < len_belief:
-                new_belief[i + 1] += belief[i] * prob_correct
-            else:
-                # At right border: can't move forward, so stay
-                new_belief[i] += belief[i] * prob_correct
-
-            # No move (robot stayed in the same place)
-            new_belief[i] += belief[i] * prob_no_move
-
-            # Robot moved backward (opposite direction)
-            if i - 1 >= 0:
-                new_belief[i - 1] += belief[i] * prob_wrong
-            else:
-                # At left border: can't move backward, so stay
-                new_belief[i] += belief[i] * prob_wrong
-
-        elif action == "B":
-            # Correctly moved backward
-            if i - 1 >= 0:
-                new_belief[i - 1] += belief[i] * prob_correct
-            else:
-                # At left border: can't move backward, so stay
-                new_belief[i] += belief[i] * prob_correct
-
-            # No move (robot stayed in the same place)
-            new_belief[i] += belief[i] * prob_no_move
-
-            # Robot moved forward (opposite direction)
-            if i + 1 < len_belief:
-                new_belief[i + 1] += belief[i] * prob_wrong
-            else:
-                # At right border: can't move forward, so stay
-                new_belief[i] += belief[i] * prob_wrong
-        
-        else:
-            raise ValueError("Invalid action. Use 'F' for forward and 'B' for backward.")
+    prob_stay = 0.15
+    prob_opposite = 0.10
     
-    return new_belief 
+    for i in range(n):
+        if action == 'B':  # Backward command
+            if i == 0:  # Left boundary - can't go further left
+                new_belief[i] += (prob_correct + prob_stay) * belief[i]  # Stay (can't go left + normal stay)
+                new_belief[i + 1] += prob_opposite * belief[i]  # Go right (opposite)
+            elif i == n - 1:  # Right boundary
+                new_belief[i - 1] += prob_correct * belief[i]  # Go left (correct)
+                new_belief[i] += (prob_opposite + prob_stay) * belief[i]  # Stay (can't go right + normal stay)
+            else:  # Normal case
+                new_belief[i - 1] += prob_correct * belief[i]  # Go left (correct)
+                new_belief[i] += prob_stay * belief[i]         # Stay
+                new_belief[i + 1] += prob_opposite * belief[i] # Go right (opposite)
+
+        elif action == 'F':  # Forward command
+            if i == 0:  # Left boundary
+                new_belief[i + 1] += prob_correct * belief[i]  # Go right (correct)
+                new_belief[i] += (prob_opposite + prob_stay) * belief[i]  # Stay (can't go left + normal stay)
+            elif i == n - 1:  # Right boundary - can't go further right
+                new_belief[i] += (prob_correct + prob_stay) * belief[i]  # Stay (can't go right + normal stay)
+                new_belief[i - 1] += prob_opposite * belief[i]  # Go left (opposite)
+            else:  # Normal case
+                new_belief[i + 1] += prob_correct * belief[i]  # Go right (correct)
+                new_belief[i] += prob_stay * belief[i]         # Stay
+                new_belief[i - 1] += prob_opposite * belief[i] # Go left (opposite)
+    
+    return new_belief
 
 
 def sensor_model(observation, belief, world):
