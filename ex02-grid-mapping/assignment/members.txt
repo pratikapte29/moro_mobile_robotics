@@ -1,4 +1,4 @@
 Info:first_name,last_name,student_id,student-email
-Uploader: John, Doe, SampleId, jd@uni-bonn.de
-2nd Member: Erika, Musterman, MusterID2, em@uni-bonn.de
-3rd Member: Max, Musterman, MusterId, mm@uni-bonn.de
+Uploader: Pratik, Apte, 50383911, s72papte@uni-bonn.de
+2nd Member: Ashutosh, Paul, 50383784, s48apaul@uni-bonn.de
+3rd Member: Vignesh, Srinivas, 50461783, s29vsrin@uni-bonn.de

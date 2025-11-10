@@ -60,12 +60,14 @@ def bresenham(x0, y0, x1, y1):
     l = np.array(list(bh.bresenham(x0, y0, x1, y1)))
     return l
     
-# def prob2logodds(p):
-    # add code here
-    
-# def logodds2prob(l):
-    # add code here    
-    
+def prob2logodds(p):
+    l = np.log(p / (1 - p))
+    return l
+
+def logodds2prob(l):
+    prob = 1 - (1 / (1 + np.exp(l)))
+    return prob
+
 # def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
     # add code here
 
