@@ -61,6 +61,7 @@ def bresenham(x0, y0, x1, y1):
     return l
     
 def prob2logodds(p):
+    p = np.clip(p, 1e-6, 1 - 1e-6) # to avoid division by zero or log of zero
     l = np.log(p / (1 - p))
     return l
 
@@ -90,7 +91,7 @@ def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
     # Compute probability for each cell 
     if np.array_equal(cell, endpoint):
         return prob_occ  # Cell is the endpoint
-    elif cell in bresenham(cell[0], cell[1], endpoint[0], endpoint[1]).tolist():
+    elif tuple(cell) in bresenham(cell[0], cell[1], endpoint[0], endpoint[1]).tolist():
         return prob_free  # Cell is on the line to the endpoint
     else:
         prob_cell = 0.5  # Unknown i.e. prior
@@ -98,5 +99,61 @@ def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
     return prob_cell
 
 def grid_mapping_with_known_poses(poses_raw, ranges_raw, map_res, occ_gridmap, prior, prob_free, prob_occ):
-    pass
-    # add code here
+
+    # Convert prior probability to log-odds
+    log_odds_prior = prob2logodds(prior)
+
+    # Initialize gridmap with prior log-odds
+    log_odds_grid = np.zeros_like(occ_gridmap)
+    log_odds_grid[:] = log_odds_prior
+
+    # Update gridmap based on each pose and corresponding range measurements
+    
+    for r in range(ranges_raw.shape[0]):
+        # convert single pose and single scan to map/frame cells
+        pose_cell = poses2cells(poses_raw[r, :], occ_gridmap, map_res)
+        endpoints = ranges2cells(ranges_raw[r, :], poses_raw[r, :], occ_gridmap, map_res)
+
+        curr_pose = pose_cell
+        curr_endpoints = endpoints
+
+        for endpoint in curr_endpoints:
+
+            # Get cells along the line from robot pose to endpoint
+            line_cells = bresenham(curr_pose[0], curr_pose[1], endpoint[0], endpoint[1])
+
+            # Update all of these cells along the line as "empty" i.e. free
+            for cell in line_cells[:-1]:  # Exclude the endpoint
+                prob_cell = inv_sensor_model(cell, endpoint, prob_occ, prob_free)
+                log_odds_update = prob2logodds(prob_cell)
+                log_odds_grid[cell] += log_odds_update - log_odds_prior
+
+            # Update endpoint as "occupoied"
+            prob_cell = inv_sensor_model(endpoint, endpoint, prob_occ, prob_free)
+            log_odds_update = prob2logodds(prob_cell)
+            log_odds_grid[endpoint] += log_odds_update - log_odds_prior
+
+    # Convert log-odds grid back to probability grid
+    occ_gridmap = logodds2prob(log_odds_grid)
+
+    return occ_gridmap
+
+        # curr_pose = poses_raw[r, :]
+
+        # # Convert pose to map coordinate 
+        # pose_map = poses2cells(curr_pose, occ_gridmap, map_res)
+        # poses.append(pose_map)
+
+        # # Get current range measurement
+        # curr_ranges = ranges_raw[r, :]
+
+        # # Convert ranges to map coordinates
+        # endpoints_map = ranges2cells(curr_ranges, curr_pose, occ_gridmap, map_res)
+        # endpoints.append(endpoints_map)
+
+        # for endpoint in endpoints_map:
+        #     if endpoint is None or np.all(endpoint == 0):
+        #         continue  # Skip invalid endpoints
+
+        #     free_cells = bresenham()
+
