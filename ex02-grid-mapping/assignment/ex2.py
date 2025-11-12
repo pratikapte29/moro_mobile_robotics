@@ -68,8 +68,34 @@ def logodds2prob(l):
     prob = 1 - (1 / (1 + np.exp(l)))
     return prob
 
-# def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
-    # add code here
+"""
+DOUBT:
+for values where prob results to being indefinite, should we clip it to the highest or near zero values?
+would that be the right way to solve this issue?
+"""
+
+def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
+    """Inverse sensor model for grid mapping.
+
+    Args:
+        cell [x, y]: The cell coordinates in the grid map.
+        endpoint [x, y]: The endpoint coordinates in the grid map.
+        prob_occ (float): The probability of the cell being occupied.
+        prob_free (float): The probability of the cell being free.
+
+    Returns:
+        float: The probability of the cell given the endpoint.
+    """
+
+    # Compute probability for each cell 
+    if np.array_equal(cell, endpoint):
+        return prob_occ  # Cell is the endpoint
+    elif cell in bresenham(cell[0], cell[1], endpoint[0], endpoint[1]).tolist():
+        return prob_free  # Cell is on the line to the endpoint
+    else:
+        prob_cell = 0.5  # Unknown i.e. prior
+
+    return prob_cell
 
 def grid_mapping_with_known_poses(poses_raw, ranges_raw, map_res, occ_gridmap, prior, prob_free, prob_occ):
     pass
