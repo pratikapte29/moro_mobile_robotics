@@ -61,18 +61,20 @@ def bresenham(x0, y0, x1, y1):
     return l
     
 def prob2logodds(p):
-    p = np.clip(p, 1e-6, 1 - 1e-6) # to avoid division by zero or log of zero
+    p = np.clip(p, 1e-6, 1 - 1e-6)  # to avoid division by zero or log of zero
     l = np.log(p / (1 - p))
     return l
 
 def logodds2prob(l):
+    l = np.clip(l, -50, 50)  # to avoid overflow in exp
     prob = 1 - (1 / (1 + np.exp(l)))
     return prob
 
 """
 DOUBT:
-for values where prob results to being indefinite, should we clip it to the highest or near zero values?
-would that be the right way to solve this issue?
+for values where prob results to being indefinite, I have 
+clipped it to the highest or near zero values. I am not 
+sure if that is the right way.
 """
 
 
