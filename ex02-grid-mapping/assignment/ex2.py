@@ -75,28 +75,16 @@ for values where prob results to being indefinite, should we clip it to the high
 would that be the right way to solve this issue?
 """
 
+
 def inv_sensor_model(cell, endpoint, prob_occ, prob_free):
-    """Inverse sensor model for grid mapping.
 
-    Args:
-        cell [x, y]: The cell coordinates in the grid map.
-        endpoint [x, y]: The endpoint coordinates in the grid map.
-        prob_occ (float): The probability of the cell being occupied.
-        prob_free (float): The probability of the cell being free.
-
-    Returns:
-        float: The probability of the cell given the endpoint.
-    """
-
-    # Compute probability for each cell 
+    # If the cell is the endpoint, it's occupied
     if np.array_equal(cell, endpoint):
-        return prob_occ  # Cell is the endpoint
-    elif tuple(cell) in bresenham(cell[0], cell[1], endpoint[0], endpoint[1]).tolist():
-        return prob_free  # Cell is on the line to the endpoint
+        return prob_occ
     else:
-        prob_cell = 0.5  # Unknown i.e. prior
-
-    return prob_cell
+        # All other cells along the ray are free
+        return prob_free
+    
 
 def grid_mapping_with_known_poses(poses_raw, ranges_raw, map_res, occ_gridmap, prior, prob_free, prob_occ):
 
@@ -104,8 +92,7 @@ def grid_mapping_with_known_poses(poses_raw, ranges_raw, map_res, occ_gridmap, p
     log_odds_prior = prob2logodds(prior)
 
     # Initialize gridmap with prior log-odds
-    log_odds_grid = np.zeros_like(occ_gridmap)
-    log_odds_grid[:] = log_odds_prior
+    log_odds_grid = np.full_like(occ_gridmap, log_odds_prior, dtype=np.float64)
 
     # Update gridmap based on each pose and corresponding range measurements
     
@@ -115,45 +102,30 @@ def grid_mapping_with_known_poses(poses_raw, ranges_raw, map_res, occ_gridmap, p
         endpoints = ranges2cells(ranges_raw[r, :], poses_raw[r, :], occ_gridmap, map_res)
 
         curr_pose = pose_cell
-        curr_endpoints = endpoints
 
-        for endpoint in curr_endpoints:
+        for i in range(endpoints.shape[1]):
+            endpoint = endpoints[:, i]
 
             # Get cells along the line from robot pose to endpoint
             line_cells = bresenham(curr_pose[0], curr_pose[1], endpoint[0], endpoint[1])
 
             # Update all of these cells along the line as "empty" i.e. free
-            for cell in line_cells[:-1]:  # Exclude the endpoint
-                prob_cell = inv_sensor_model(cell, endpoint, prob_occ, prob_free)
-                log_odds_update = prob2logodds(prob_cell)
-                log_odds_grid[cell] += log_odds_update - log_odds_prior
+            for j in range(len(line_cells) - 1):  
+                cell = line_cells[j]
+        
+                if 0 <= cell[0] < occ_gridmap.shape[0] and 0 <= cell[1] < occ_gridmap.shape[1]:
+                    prob_cell = inv_sensor_model(cell, endpoint, prob_occ, prob_free)
+                    log_odds_update = prob2logodds(prob_cell)
+                    log_odds_grid[cell[0], cell[1]] += log_odds_update - log_odds_prior 
+    
+            endpoint_cell = line_cells[-1]
 
-            # Update endpoint as "occupoied"
-            prob_cell = inv_sensor_model(endpoint, endpoint, prob_occ, prob_free)
-            log_odds_update = prob2logodds(prob_cell)
-            log_odds_grid[endpoint] += log_odds_update - log_odds_prior
+            if 0 <= endpoint_cell[0] < occ_gridmap.shape[0] and 0 <= endpoint_cell[1] < occ_gridmap.shape[1]: 
+                prob_cell = inv_sensor_model(endpoint_cell, endpoint, prob_occ, prob_free)
+                log_odds_update = prob2logodds(prob_cell)
+                log_odds_grid[endpoint_cell[0], endpoint_cell[1]] += log_odds_update - log_odds_prior 
 
     # Convert log-odds grid back to probability grid
     occ_gridmap = logodds2prob(log_odds_grid)
 
     return occ_gridmap
-
-        # curr_pose = poses_raw[r, :]
-
-        # # Convert pose to map coordinate 
-        # pose_map = poses2cells(curr_pose, occ_gridmap, map_res)
-        # poses.append(pose_map)
-
-        # # Get current range measurement
-        # curr_ranges = ranges_raw[r, :]
-
-        # # Convert ranges to map coordinates
-        # endpoints_map = ranges2cells(curr_ranges, curr_pose, occ_gridmap, map_res)
-        # endpoints.append(endpoints_map)
-
-        # for endpoint in endpoints_map:
-        #     if endpoint is None or np.all(endpoint == 0):
-        #         continue  # Skip invalid endpoints
-
-        #     free_cells = bresenham()
-
