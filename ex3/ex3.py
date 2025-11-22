@@ -24,7 +24,7 @@ def probability_density(mean, variance):
 
     ##STUDENT_CODE:  #TODO Compute normal distribution
 
-
+    density = (1 / np.sqrt(2 * np.pi * variance)) * np.exp(-(mean ** 2) / (2 * variance))
 
     ##END_STUDENT_CODE
     return density
@@ -35,7 +35,25 @@ def motion_model(x_t, x_t_1, u_t, alpha, marginalise_p3=False):
     
     ##STUDENT_CODE:  #TODO Compute p1, p2 and p3!
 
+    # p1 = probability_density()
 
+    # Extract odometry poses
+    x_bar_t_1 = u_t[0] 
+    x_bar_t = u_t[1] 
+
+    # Use inverse motion model to calculate rot, trans 
+    rot1, trans, rot2 = inverse_motion_model(x_bar_t_1, x_bar_t)
+    rot1_cap, trans_cap, rot2_cap = inverse_motion_model(x_t_1, x_t)  # notation based on lecture slides
+
+    # Calculate variances for eahc component
+    var1 = alpha[0] * abs(rot1) + alpha[1] * trans
+    var2 = alpha[2] * trans + alpha[3] * (abs(rot1) + abs(rot2))
+    var3 = alpha[0] * abs(rot2) + alpha[1] * trans
+
+    # Calculate probability densities
+    p1 = probability_density(rot1 - rot1_cap, var1)
+    p2 = probability_density(trans - trans_cap, var2)
+    p3 = probability_density(rot2 - rot2_cap, var3)
 
     ##END_STUDENT_CODE 
     if marginalise_p3: 
