@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 def inverse_motion_model(pose_t_1, pose_t):
     ##STUDENT_CODE:  #TODO Compute rot1,trans and rot2 of the inverse motion model.
 
+    trans = ((pose_t_1[0] - pose_t[0])**2 + (pose_t_1[1] - pose_t[1])**2)**0.5
+
+    rot1 = np.arctan2(pose_t_1[1] - pose_t[1], pose_t_1[0] - pose_t[0]) - pose_t[2]
+
+    rot2 = pose_t_1[2] - pose_t[2] - rot1
 
 
     ##END_STUDENT_CODE:
