@@ -106,7 +106,6 @@ def plot_posterior_belief(x_t_1, u_t, alpha, ret=False, marginalise_p3=False, N_
                 prob = motion_model(x_t, x_t_1, u_t, alpha, marginalise_p3=True)
                 gridmap[i, j] = prob
 
-
         ##END_STUDENT_CODE 
 
     if ret:
@@ -117,6 +116,7 @@ def plot_posterior_belief(x_t_1, u_t, alpha, ret=False, marginalise_p3=False, N_
     gridmap = gridmap/np.sum(gridmap)
     plt.imshow(1-gridmap, cmap="gray", extent=[-res*(size - origin[0]), res*(size - origin[0]), -res*(size - origin[1]), res*(size - origin[1])])
     plt.show()
+
 
 def evaluate_sample_odometry(alpha, pose_0, odom, ret=False):
     plot_lims = [(0,6),(2.5,6.5)]
@@ -183,6 +183,7 @@ def evaluate_sample_odometry(alpha, pose_0, odom, ret=False):
     plt.legend()
     plt.show()
 
+
 def plot_sample_motion_model(pose_t_1, u_t, alpha):
     num_samples = 1000
     samples = np.zeros((num_samples, 3))
@@ -197,6 +198,7 @@ def plot_sample_motion_model(pose_t_1, u_t, alpha):
     plt.axis('equal')
     plt.show()
 
+
 def get_sample(std): 
     #Irwin–Hall -> Using Central Limit Theorem to generate cheap normal distributed samples. 
     tot = 0
@@ -209,6 +211,27 @@ def get_sample(std):
 def sample_motion_model(pose_t_1, u_t, alpha):
     ##STUDENT_CODE #TODO Compute x_t, y_t and theta_t
 
+    # Extract odometry poses
+    x_bar_t_1 = u_t[0]
+    x_bar_t = u_t[1]
+
+    # Use inverse motion model to calculate rot1, trans, rot2
+    rot1, trans, rot2 = inverse_motion_model(x_bar_t_1, x_bar_t)
+    
+    # Calculate variances for each component
+    var1 = alpha[0] * abs(rot1) + alpha[1] * trans
+    var2 = alpha[2] * trans + alpha[3] * (abs(rot1) + abs(rot2))
+    var3 = alpha[0] * abs(rot2) + alpha[1] * trans
+
+    # Sample each component based on formulae given in the lecture slides
+    rot1_cap = rot1 + get_sample(np.sqrt(var1))
+    trans_cap = trans + get_sample(np.sqrt(var2))
+    rot2_cap = rot2 + get_sample(np.sqrt(var3))
+
+    # Calculate new pose
+    x_t = pose_t_1[0] + trans_cap * np.cos(pose_t_1[2] + rot1_cap)
+    y_t = pose_t_1[1] + trans_cap * np.sin(pose_t_1[2] + rot1_cap)
+    theta_t = pose_t_1[2] + rot1_cap + rot2_cap  
 
 
     ##END_STUDENT_CODE
