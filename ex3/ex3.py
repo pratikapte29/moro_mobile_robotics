@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 def inverse_motion_model(pose_t_1, pose_t):
     ##STUDENT_CODE:  #TODO Compute rot1,trans and rot2 of the inverse motion model.
 
-    trans = ((pose_t_1[0] - pose_t[0])**2 + (pose_t_1[1] - pose_t[1])**2)**0.5
+    trans = ((pose_t[0] - pose_t_1[0])**2 + (pose_t[1] - pose_t_1[1])**2)**0.5
 
-    rot1 = np.arctan2(pose_t_1[1] - pose_t[1], pose_t_1[0] - pose_t[0]) - pose_t[2]
+    rot1 = np.arctan2(pose_t[1] - pose_t_1[1], pose_t[0] - pose_t_1[0]) - pose_t_1[2]
 
-    rot2 = pose_t_1[2] - pose_t[2] - rot1
+    rot2 = pose_t[2] - pose_t_1[2] - rot1
 
 
     ##END_STUDENT_CODE:
@@ -128,7 +128,13 @@ def evaluate_sample_odometry(alpha, pose_0, odom, ret=False):
 
         ##STUDENT_CODE #TODO: compute xt, yt, theta_t from odometry
 
+        u_t = [odom[odom_idx], odom[odom_idx + 1]]
+        rot1, trans, rot2 = inverse_motion_model(u_t[0], u_t[1])
 
+        # Calculate ground truth poses baed on last pose
+        x_t = last_pose[0] + trans * np.cos(last_pose[2] + rot1)
+        y_t = last_pose[1] + trans * np.sin(last_pose[2] + rot1)
+        theta_t = last_pose[2] + rot1 + rot2
 
         ##END_STUDENT_CODE
         current_pose = [x_t, y_t, theta_t]
@@ -152,8 +158,19 @@ def evaluate_sample_odometry(alpha, pose_0, odom, ret=False):
 
         ##STUDENT_CODE # TODO: update all samples and the current_pose
 
+        u_t = [odom[odom_idx], odom[odom_idx + 1]]
 
+        for i in range(num_samples):
+            samples[i] = sample_motion_model(samples[i], u_t, alpha)
 
+        # Current pose = mean of samples
+
+        current_pose = [
+            np.mean(samples[:, 0]), 
+            np.mean(samples[:, 1]), 
+            np.mean(samples[:, 2])
+            ]
+        
         ##END_STUDENT_CODE
         estimated_poses.append(current_pose)
         samples_for_plot.append(np.copy(samples))
@@ -232,7 +249,6 @@ def sample_motion_model(pose_t_1, u_t, alpha):
     x_t = pose_t_1[0] + trans_cap * np.cos(pose_t_1[2] + rot1_cap)
     y_t = pose_t_1[1] + trans_cap * np.sin(pose_t_1[2] + rot1_cap)
     theta_t = pose_t_1[2] + rot1_cap + rot2_cap  
-
 
     ##END_STUDENT_CODE
     return x_t, y_t, theta_t
