@@ -75,16 +75,44 @@ def plot_posterior_belief(x_t_1, u_t, alpha, ret=False, marginalise_p3=False, N_
         
 
         ##STUDENT_CODE #TODO #3.4 A) Compute gridmap
+        for i in range(size):
+            for j in range(size):
+                probability = 0
 
-
+                for k in range(N_theta):
+                    # Calculate pose for each cell and each theta
+                    x_t = np.array([res * (i - origin[0]), 
+                                    res * (j - origin[1]),
+                                    k * dtheta])
+                    
+                    # Integrate over all possible thetas
+                    prob = motion_model(x_t, x_t_1, u_t, alpha, marginalise_p3)
+                    probability += prob * dtheta
+                
+                gridmap[i, j] = probability
 
         ##END_STUDENT_CODE 
 
-    
     else:
         marginalise_p3 = True
         ##STUDENT_CODE #TODO #3.4 B) Use Marginalised motion_model marginalise_p3=True and pass to motion_model!
+        dtheta = 2 * np.pi / N_theta
+        
+        for i in range(size):
+            for j in range(size):
+                probability = 0
 
+                for k in range(N_theta):
+                    # Calculate pose for each cell and each theta
+                    x_t = np.array([res * (i - origin[0]), 
+                                    res * (j - origin[1]),
+                                    k * dtheta])
+                    
+                    # Integrate over all possible thetas
+                    prob = motion_model(x_t, x_t_1, u_t, alpha, marginalise_p3)
+                    probability += prob * dtheta
+                
+                gridmap[i, j] = probability
 
 
         ##END_STUDENT_CODE 
