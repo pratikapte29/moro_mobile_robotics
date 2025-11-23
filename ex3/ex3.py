@@ -45,12 +45,12 @@ def motion_model(x_t, x_t_1, u_t, alpha, marginalise_p3=False):
     rot1, trans, rot2 = inverse_motion_model(x_bar_t_1, x_bar_t)
     rot1_cap, trans_cap, rot2_cap = inverse_motion_model(x_t_1, x_t)  # notation based on lecture slides
 
-    # Calculate variances for eahc component
+    # Calculate variances for eahc component from lecture slide formulae
     var1 = alpha[0] * abs(rot1) + alpha[1] * trans
     var2 = alpha[2] * trans + alpha[3] * (abs(rot1) + abs(rot2))
     var3 = alpha[0] * abs(rot2) + alpha[1] * trans
 
-    # Calculate probability densities
+    # Calculate probability densities (again based on formula from lecture slides)
     p1 = probability_density(rot1 - rot1_cap, var1)
     p2 = probability_density(trans - trans_cap, var2)
     p3 = probability_density(rot2 - rot2_cap, var3)
