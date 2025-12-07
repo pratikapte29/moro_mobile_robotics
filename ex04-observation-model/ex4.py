@@ -38,15 +38,29 @@ def observation_likelihood(z,sigma_z, b, gridmap):
             likelihood[i, j] = landmark_observation_model(z, sigma_z, b, x)
 
 
-
-
     ##END_STUDENT_CODE:
     return likelihood
 
 def joint_observation_likelihood(z, sigma_z, b, gridmap):
     ##STUDENT_CODE:  #TODO    
 
+    # here, we are initializing it to 1, insteadof 0
+    # because as all measurements are independent,
+    # we are multiplying the likelihoods
+    joint_likelihood = np.ones(gridmap.shape)
 
+    for i in range(len(z)):
+        for j in range(gridmap.shape[0]):
+            for k in range(gridmap.shape[1]):
+
+                # robot position 
+                x = np.array([j, k])
+
+                # Likelihood of observing beacon i from current position
+                likelihood_i = landmark_observation_model(z[i], sigma_z[i], b[i], x)
+
+                # total likelihood = product of each one, since they are independent
+                joint_likelihood[j, k] *= likelihood_i
 
     ##END_STUDENT_CODE:
     return joint_likelihood
