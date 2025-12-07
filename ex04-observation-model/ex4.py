@@ -28,6 +28,16 @@ def landmark_observation_model(z,sigma_r, b, x):
 def observation_likelihood(z,sigma_z, b, gridmap):
     ##STUDENT_CODE:  #TODO
 
+    likelihood = np.zeros(gridmap.shape)
+    for i in range(gridmap.shape[0]):
+        for j in range(gridmap.shape[1]):
+
+            # position of the robot in the gridmap
+            x = np.array([i, j])
+            # compute the likelihood of observing z from position x
+            likelihood[i, j] = landmark_observation_model(z, sigma_z, b, x)
+
+
 
 
     ##END_STUDENT_CODE:
