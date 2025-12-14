@@ -14,10 +14,17 @@ FLAG_TIME_MISSMATCH = -2
 def inverse_motion_model(pose, pose_prev):
     ##STUDENT_CODE: #TODO:Q1 compute rot1, trans, and rot2 of the inverse motion model
 
+    # Get the change in position
+    dx = pose[0] - pose_prev[0]
+    dy = pose[1] - pose_prev[1]
 
+    # Translation from pose_prev to current pose
+    trans = np.sqrt(dx**2 + dy**2)
 
-
-
+    # Compute rot1 and rot2
+    rot1  = wrapToPi(np.arctan2(dy,dx) - pose_prev[2])
+    rot2  = wrapToPi(pose[2] - pose_prev[2] - rot1)
+    u = np.array([rot1, trans, rot2])
 
     ##END_STUDENT_CODE
     u = np.array([rot1, trans, rot2])
@@ -26,15 +33,22 @@ def inverse_motion_model(pose, pose_prev):
 
 def ekf_predict(mu, S, u, R):
     ##STUDENT_CODE: #TODO:Q1 given the previous gaussian distribution (mu, S), the solution of the inverse motion model u, and the noise matrix R, update the gaussian and return the new (mu,S)
+    # Get inputs
+    dr1, dt, dr2 = u
+    x, y, th = mu
 
-
+    # Apply motion model to get new mean
+    x_new = x + dt*np.cos(th + dr1)
+    y_new = y + dt*np.sin(th + dr1)
+    th_new = wrapToPi(th + dr1 + dr2)
 
     # Update mu
-
+    mu = np.array([x_new, y_new, th_new])
     # Update covariance
-
-
-
+    J = np.array([[1, 0, -dt*np.sin(th + dr1)],
+                  [0, 1,  dt*np.cos(th + dr1)],
+                  [0, 0,  1]])  # Motion model jacobian based on slides
+    S = J @ S @ J.T + R
 
     ##END_STUDENT_CODE
     return mu, S
@@ -48,25 +62,40 @@ def ekf_correct(mu, S, z, Q, M):
     for i in range(num_obs):
         ##STUDENT_CODE: #TODO:Q2 given the gaussian (mu,S), the observations z, the map M, and the observation noise matrix Q return the new gaussian (mu, S)
 
-
-
         # Obtain the ID of landmark for the current observation
+        rho_m, phi_m, id_i = z[:, i]  
 
         # Get map location of the landmark ID
+        mx, my = M[int(id_i)]
 
         # Compute distance to observed landmark
+        xr, yr, theta = mu
+        dx = mx - xr
+        dy = my - yr
+        d2 = dx**2 + dy**2
+        d = np.sqrt(d2)
+
+        z_hat = np.array([d, wrapToPi(np.arctan2(dy, dx) - theta)])
 
         # Compute observation model H
+        H = np.zeros((2, 3))
+        H[0, 0] = -dx/d      
+        H[0, 1] = -dy/d      
+        H[1, 0] = dy/d2      
+        H[1, 1] = -dx/d2     
+        H[1, 2] = -1.0       
 
         # Compute kalman gain K
+        K = S @ H.T @ np.linalg.inv(H @ S @ H.T + Q)
 
         # Compute delta_mu
+        delta_mu = np.array([rho_m - z_hat[0], wrapToPi(phi_m - z_hat[1])])
 
         # Update mu
+        mu = mu + K @ delta_mu
 
         # Update covariance matrix S
-
-
+        S = (np.eye(3) - K @ H) @ S
 
 
     ##END_STUDENT_CODE
@@ -76,10 +105,15 @@ def ekf_correct(mu, S, z, Q, M):
 def init_params():
     ##STUDENT_CODE: #TODO:Q3 Initialize belief (mu and S), process noise R, and measurement noise Q
 
+    mu = np.array([2.0, 2.0, np.pi/2])
 
+    S = np.diag([1.0, 1.0, np.pi/3])
 
+    sx, sy, st = 0.25, 0.25, np.deg2rad(10)
+    R = np.diag([sx**2, sy**2, st**2])
 
-
+    sr, sp = 0.80, np.deg2rad(15)
+    Q = np.diag([sr**2, sp**2])
 
     ##END_STUDENT_CODE
 
@@ -111,13 +145,19 @@ def run_ekf_localization(plot=True, step_size=100, last_step=1500, sensor_specs=
 
         # Compute control command **ui** from odometry 
 
-        ui = inverse_motion_model()
+        ui = inverse_motion_model(
+            dataset["odom"][timestep_now], 
+            dataset["odom"][timestep_prev]
+        )
 
         # EKF prediction step
+        mu, S = ekf_predict(mu, S, ui, R)
 
         # Compute EKF correction step if timestep_sensor is neither FLAG_TIME_MISSMATCH or FLAG_SENSOR_FAILURE!
 
-
+        if sensor_timestep != FLAG_SENSOR_FAILURE and sensor_timestep != FLAG_TIME_MISSMATCH:
+            z = dataset["z"][sensor_timestep]
+            mu, S = ekf_correct(mu, S, z, Q, M)
 
 
         ##END_STUDENT_CODE
@@ -167,7 +207,9 @@ def get_timesteps_system(
         ##STUDENT_CODE: #TODO:Q4 Task1: Sensor Failure - Sensor fails with p_sensor_failure -> Assign FLAG_SENSOR_FAILURE to the timestep
 
 
-
+        # Randomly fail sensors with probability p_sensor_failure
+        fail = np.random.rand(len(sensor_timesteps)) < p_sensor_failure
+        sensor_timesteps[fail] = FLAG_SENSOR_FAILURE
 
 
 
@@ -182,7 +224,14 @@ def get_timesteps_system(
 
         #                           else            -> assign FLAG_TIME_MISSMATCH
 
-
+        matched = np.full_like(odom_timesteps, FLAG_TIME_MISSMATCH)
+        for i, ot in enumerate(odom_timesteps):
+            cand = sensor_timesteps[(sensor_timesteps >= 0) &
+                                    (sensor_timesteps <= ot) &
+                                    (sensor_timesteps >= ot - tolerance_steps)]
+            if cand.size:
+                matched[i] = cand[-1]   # newest within tolerance
+        sensor_timesteps = matched
 
 
         ##END_STUDENT_CODE
