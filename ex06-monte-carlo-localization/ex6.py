@@ -20,23 +20,21 @@ def sample_motion_model_odometry(pose_t_1, u_t, alpha):
     rot1, trans, rot2 = u_t
 
     ##STUDENT_CODE #TODO Q1: Compute x_t, y_t and theta_t
-
-    # have taken max to avoid negative value for "scale" later down in the code
-    rot1_hat = rot1 + np.random.normal(0, max(0, alpha[0] * abs(rot1) + alpha[1] * trans))
-    trans_hat = trans + np.random.normal(0, max(0, alpha[2] * trans + alpha[3] * (abs(rot1) + abs(rot2))))
-    rot2_hat = rot2 + np.random.normal(0, max(0, alpha[0] * abs(rot2) + alpha[1] * trans))
-
-    x_t = pose_t_1[0] + trans_hat * np.cos(pose_t_1[2] + rot1_hat)
-    y_t = pose_t_1[1] + trans_hat * np.sin(pose_t_1[2] + rot1_hat)
-    theta_t = wrapToPi(pose_t_1[2] + rot1_hat + rot2_hat)
-
-
-    # For this task (compared to EX03) you have been already given the rot1, trans and rot2 components.
-
-    # Please follow the notation of the lecture -> The variance is a sum of absolute values not squares!
-
-
-
+    x, y, theta = pose_t_1
+    
+    # adding noise to odometry
+    delta_rot1_noisy = rot1 + np.random.normal(0, alpha[0] * abs(rot1) + alpha[1] * abs(trans))
+    delta_trans_noisy = trans + np.random.normal(0, alpha[2] * abs(trans) + alpha[3] * (abs(rot1) + abs(rot2)))
+    delta_rot2_noisy = rot2 + np.random.normal(0, alpha[0] * abs(rot2) + alpha[1] * abs(trans))
+    
+    # applying motion
+    theta_temp = theta + delta_rot1_noisy
+    x_t = x + delta_trans_noisy * np.cos(theta_temp)
+    y_t = y + delta_trans_noisy * np.sin(theta_temp)
+    theta_t = theta_temp + delta_rot2_noisy
+    
+    # normalizing angle
+    theta_t = np.arctan2(np.sin(theta_t), np.cos(theta_t))
 
     ##END_STUDENT_CODE
     shape_check("x_t",x_t,())
@@ -50,74 +48,72 @@ def compute_weights(
 ):
     ##STUDENT_CODE: #TODO Q2: Compute weights for each sample: The observation model assumes beams are conditionally independent!
 
-    # Filter sensor readings that do not lie within max_range
-    keep_mask = z_obs[0, :] <= max_range
-    short_beams = z_obs[:, keep_mask]  # Filtered beams
-
+    weight = 1.0
+    
+    # Filtering sensor readings that do not lie within max_range
+    angles = z_obs[0, :]
+    ranges = z_obs[1, :]
+    valid_idx = ranges <= max_range
+    valid_ranges = ranges[valid_idx]
+    valid_angles = angles[valid_idx]
+    
     # Transform observation to gridmap coordinates
-    robot_endpoints = ranges2points(short_beams[0], short_beams[1])  # Robot frame
-    robot_to_world_matrix = v2t(x_pose)  # Transformation matrix
-    world_endpoints = robot_to_world_matrix @ robot_endpoints  # World frame
-
-    z_in_map = world2map(world_endpoints, gridmap, map_res)  # Map coordinates
-
+    z_in_map = ranges2cells(valid_ranges, valid_angles, x_pose, gridmap, map_res)
+    
     # Count beams that land outside the map
-    h, w = gridmap.shape
-    on_map_mask = (
-        (z_in_map[0] >= 0) & (z_in_map[0] < w) & (z_in_map[1] >= 0) & (z_in_map[1] < h)
-    )
-    num_off_mask = np.sum(~on_map_mask)  # Beams outside the map
-    num_on_mask = np.sum(on_map_mask)  # Beams inside the map
-
-    # Compute probability for those outside beam occurrences
-    p_out = p_outside**num_off_mask
-
-    # Obtain probabilities from beams that end (i,j) within the gridmap
-    if num_on_mask > 0:
-        hit_likelihoods = likelihood_map[z_in_map[1, on_map_mask], z_in_map[0, on_map_mask]]
-        on_map_prob = np.prod(hit_likelihoods)  # Product of probabilities
-    else:
-        on_map_prob = 1.0  # Default if no beams are inside the map
-
-    # Compute final weight by combining both subsets of beams
-    weight = on_map_prob * p_out
+    map_height, map_width = gridmap.shape
+    
+    for i in range(z_in_map.shape[1]):
+        x_map = z_in_map[0, i]
+        y_map = z_in_map[1, i]
+        
+        # Compute probabilty for those outside beam occurences.
+        # Give all of them the same weight of p_outside
+        if x_map < 0 or x_map >= map_width or y_map < 0 or y_map >= map_height:
+            weight *= p_outside
+        else:
+            # Obtain probabilties from beams that end (i,j) within the gridmap
+            p_ij = likelihood_map[y_map, x_map]
+            weight *= p_ij
+    
+    # Compute final weight by combining both subsets of beams.
+    # (already done by multiplying in the loop above)
 
     ##END_STUDENT_CODE
-    shape_check("weight", weight, ())
+    shape_check("weight",weight,())
     return weight
 
 
 def low_variance_resampler(particles, weights):
     ##STUDENT_CODE: #TODO Q3: Implement the low variance resampling strategy
 
-    N = particles.shape[0]
-    weights = weights / np.sum(weights)  # normalize
-    cw = np.cumsum(weights)
-
-    resampled_particles = np.empty_like(particles)
-    resampled_idx       = np.empty(N, dtype=int)
-
-    # Compute random resample_offset in range [0:1/N)
-
-    resample_offset = np.random.uniform(0, 1/N)
-    idx = 0
-
+    N = len(particles)
+    resampled_particles = np.zeros_like(particles)
+    resampled_idx = np.zeros(N, dtype=int)
+    
+    # Computing random resample_offset in range [0:1/N)
+    resample_offset = np.random.uniform(0, 1.0/N)
+    
+    # Computing cumulative weights
+    cumulative_weights = np.cumsum(weights)
+    
     # Iterate over N evenenly distributed bins [0,1) shifted by offset_start
-
+    i = 0
     for j in range(N):
-
+        # Calculate the target value for this bin
+        target = resample_offset + j * (1.0/N)
+        
         # Find first index of cummulative weights that overlay the left bin border
-        bin_edge = (j/N) + resample_offset
-        while idx < N-1 and cw[idx] < bin_edge:
-            idx += 1
+        while i < N and cumulative_weights[i] < target:
+            i += 1
+        
+        # Handle edge case
+        if i >= N:
+            i = N - 1
+        
         # Store resampled particle and corresponding index
-
-        resampled_particles[j] = particles[idx] 
-
-        resampled_idx[j] = idx
-
-
-
+        resampled_particles[j] = particles[i]
+        resampled_idx[j] = i
 
     ##END_STUDENT_CODE
     assert resampled_particles[:, 0].size == resampled_idx.size, (
@@ -146,65 +142,50 @@ def mc_localization(
     # Init GifWriter
     file_name, fig, GifWriter = init_plot_mc_localization(num_particles, parallel_mode)
     init_particles = particles
-    VECTORIZED = parallel_mode
 
     with GifWriter.saving(fig, file_name, dpi=150):
         ##STUDENT_CODE: #TODO Q4: Implement the complete mc_localization
 
-
+        VECTORIZED = parallel_mode
+        weights = np.zeros(num_particles)
 
         # Iterate over all timesteps
-
         for timestep in range(len(odom)):
 
-            # timestep = TODO
+            u_t = odom[timestep]
+            z_t = z[timestep]
 
             if not VECTORIZED:
 
                 ##STUDENT_CODE: #TODO Q4:
 
-                weights = np.zeros(num_particles)
-
-                for i in range(num_particles):
-                    particles[i] = sample_motion_model_odometry(
-                        particles[i], odom[timestep], noise
-                    )
-
-                    weights[i] = compute_weights(
-                        particles[i], z[timestep], gridmap, likelihood_map, map_res
-    )
-
-                # Iterate over all particles
-
+                # Iterating over all particles
+                for m in range(num_particles):
                     # Compute forward motion model
-
+                    particles[m] = sample_motion_model_odometry(particles[m], u_t, noise)
+                    
                     # Compute weight for particle
+                    weights[m] = compute_weights(particles[m], z_t, gridmap, likelihood_map, map_res)
 
             else:
 
                 ##STUDENT_CODE #TODO Q5
 
-                particles = sample_motion_model_odometry_parallel(particles, odom[timestep], noise)
-                weights = compute_weights_parallel(
-                    particles, z[timestep], gridmap, likelihood_map, map_res
-                )
+                # USE _parallel FUNCTIONS
+                particles = sample_motion_model_odometry_parallel(particles, u_t, noise)
+                weights = compute_weights_parallel(particles, z_t, gridmap, likelihood_map, map_res)
 
-                TODO #USE _parallel FUNCTIONS
-
-            # Normalise the weights across all particles
-            weights /= np.sum(weights)
+            # Normaliseing the weights across all particles
+            weights = weights / np.sum(weights)
 
             if not VECTORIZED:
 
                 # Apply low variance resampling
-
                 particles, resampled_idx, resample_offset = low_variance_resampler(particles, weights)
 
             else:
 
                 ##STUDENT_CODE #TODO Q5: do not loop over bins!
-
-
 
                 particles, resampled_idx, resample_offset = low_variance_resampler_parallel(particles, weights)
 
@@ -258,31 +239,29 @@ def mc_localization(
 
 def ranges2cells_parallel(r_ranges, r_angles, w_poses, gridmap, map_res):
     ##STUDENT_CODE #TODO Q5
-
-    points = ranges2points_parallel(r_ranges, r_angles)
-    T = v2t_parallel(w_poses)
-
-    world_pts = T @ points
-    world_pts = world_pts[:, :2, :]
-
-    m_points = np.zeros_like(world_pts)
-    max_y = gridmap.shape[0] - 1
-    m_points[:, 0, :] = np.round(world_pts[:, 0, :] / map_res)
-    m_points[:, 1, :] = max_y - np.round(world_pts[:, 1, :] / map_res)
-
+    
+    # convert to points
+    r_points = ranges2points_parallel(r_ranges, r_angles)
+    # get transformation matrices for all poses
+    w_P = v2t_parallel(w_poses)
+    # transforming all points for all particles
+    w_points = np.matmul(w_P, r_points)
+    # converting to map coordinates
+    m_points = world2map_parallel(w_points, gridmap, map_res)
+    m_points = m_points[:, 0:2, :]
+    
     ##END_STUDENT_CODE
     shape_check("m_points",m_points,(w_poses.shape[0],2,r_ranges.shape[0]))
     return m_points
 
 def ranges2points_parallel(ranges, angles):
     ##STUDENT_CODE #TODO Q5
-
-    points = np.vstack((
-    ranges * np.cos(angles),
-    ranges * np.sin(angles)
-    ))
-    points_hom = np.vstack((points, np.ones(ranges.shape[0])))
-
+    
+    # convert ranges and angles to 2D points
+    points = np.array([ranges * np.cos(angles), ranges * np.sin(angles)])
+    # add homogeneous coordinate
+    points_hom = np.vstack([points, np.ones((1, ranges.shape[0]))])
+    
     ##END_STUDENT_CODE
     shape_check("points_hom",points_hom,(3,ranges.shape[0]))
     return points_hom
@@ -290,57 +269,53 @@ def ranges2points_parallel(ranges, angles):
 
 def v2t_parallel(poses):
     ##STUDENT_CODE #TODO Q5
-
+    
     N = poses.shape[0]
+    tr = np.zeros((N, 3, 3))
     c = np.cos(poses[:, 2])
     s = np.sin(poses[:, 2])
-
-    tr = np.zeros((N, 3, 3))
     tr[:, 0, 0] = c
     tr[:, 0, 1] = -s
+    tr[:, 0, 2] = poses[:, 0]
     tr[:, 1, 0] = s
     tr[:, 1, 1] = c
-    tr[:, 0, 2] = poses[:, 0]
     tr[:, 1, 2] = poses[:, 1]
     tr[:, 2, 2] = 1
-
+    
     ##END_STUDENT_CODE
     shape_check("tr",tr,(poses.shape[0],3,3))
     return tr
 
 def world2map_parallel(poses, gridmap, map_res):
     ##STUDENT_CODE #TODO Q5
-
+    
     max_y = gridmap.shape[0] - 1
     new_poses = np.zeros_like(poses)
     new_poses[:, 0] = np.round(poses[:, 0] / map_res)
     new_poses[:, 1] = max_y - np.round(poses[:, 1] / map_res)
-    new_poses[:, 2] = poses[:, 2]
-
+    
     ##END_STUDENT_CODE
     shape_check("new_poses",new_poses,poses.shape)
     return new_poses.astype(int)
 
 def sample_motion_model_odometry_parallel(poses_t_1, u_t, alpha):
     ##STUDENT_CODE #TODO Q5
-    rot1, trans, rot2 = u_t
+    
     N = poses_t_1.shape[0]
-
-    rot1_hat = rot1 + get_sample_parallel(
-        alpha[0] * abs(rot1) + alpha[1] * trans, N
-    )
-    trans_hat = trans + get_sample_parallel(
-        alpha[2] * trans + alpha[3] * (abs(rot1) + abs(rot2)), N
-    )
-    rot2_hat = rot2 + get_sample_parallel(
-        alpha[0] * abs(rot2) + alpha[1] * trans, N
-    )
-
-    x_t = poses_t_1[:, 0] + trans_hat * np.cos(poses_t_1[:, 2] + rot1_hat)
-    y_t = poses_t_1[:, 1] + trans_hat * np.sin(poses_t_1[:, 2] + rot1_hat)
-    theta_t = poses_t_1[:, 2] + rot1_hat + rot2_hat
-    theta_t = (theta_t + np.pi) % (2 * np.pi) - np.pi
-
+    rot1, trans, rot2 = u_t
+    
+    # adding noise to all particles at once
+    delta_rot1_noisy = rot1 + get_sample_parallel(alpha[0] * abs(rot1) + alpha[1] * abs(trans), N)
+    delta_trans_noisy = trans + get_sample_parallel(alpha[2] * abs(trans) + alpha[3] * (abs(rot1) + abs(rot2)), N)
+    delta_rot2_noisy = rot2 + get_sample_parallel(alpha[0] * abs(rot2) + alpha[1] * abs(trans), N)
+    
+    # applying motion to all particles
+    theta_temp = poses_t_1[:, 2] + delta_rot1_noisy
+    x_t = poses_t_1[:, 0] + delta_trans_noisy * np.cos(theta_temp)
+    y_t = poses_t_1[:, 1] + delta_trans_noisy * np.sin(theta_temp)
+    theta_t = theta_temp + delta_rot2_noisy
+    theta_t = np.arctan2(np.sin(theta_t), np.cos(theta_t))
+    
     ##END_STUDENT_CODE
     shape_check("x_t",x_t,(poses_t_1.shape[0],))
     shape_check("y_t",y_t,(poses_t_1.shape[0],))
@@ -350,12 +325,10 @@ def sample_motion_model_odometry_parallel(poses_t_1, u_t, alpha):
 
 def get_sample_parallel(std, count):
     ##STUDENT_CODE #TODO Q5: 
-
-    tot = np.sum(
-    np.random.uniform(-std, std, size=(12, count)),
-    axis=0
-    )
-
+    
+    # generate count samples from normal distribution
+    tot = np.random.normal(0, std, count)
+    
     ##END_STUDENT_CODE
     shape_check("tot",tot,(count,))
     return 0.5 * tot
@@ -364,67 +337,62 @@ def compute_weights_parallel(
     x_poses, z_obs, gridmap, likelihood_map, map_res, p_outside=0.1, max_range=10
 ):
     ##STUDENT_CODE #TODO Q5: Compute particle weights
+    
     B = x_poses.shape[0]
-
-    # Filter sensor readings that do not lie within max_range
-    keep_mask = z_obs[0, :] <= max_range
-    ranges = z_obs[0, keep_mask]
-    angles = z_obs[1, keep_mask]
-
-    # Count beams that land outside the map
-    m_points = ranges2cells_parallel(ranges, angles, x_poses, gridmap, map_res)
-    h, w = gridmap.shape
-
-    valid = (
-        (m_points[:, 0, :] >= 0) & (m_points[:, 0, :] < w) &
-        (m_points[:, 1, :] >= 0) & (m_points[:, 1, :] < h)
-    )
-
-    # Compute probabilty for those outside beam occurences.
-    num_outside = np.sum(~valid, axis=1)
-    p_out = p_outside ** num_outside
-
-    # Obtain probabilties from beams that end within the gridmap
     weights = np.ones(B)
-
-    for i in range(B):
-        inside = valid[i]
-        if np.any(inside):
-            i_idx = m_points[i, 1, inside]
-            j_idx = m_points[i, 0, inside]
-            i_idx = i_idx.astype(int)
-            j_idx = j_idx.astype(int)
-            p_ij = likelihood_map[i_idx, j_idx]
-            weights[i] = np.prod(p_ij) * p_out[i]
-        else:
-            weights[i] = p_out[i]
-
-    # Compute final weight by combining both subsets of beams.
-
+    
+    # Filter sensor readings that do not lie within max_range
+    angles = z_obs[0, :]
+    ranges = z_obs[1, :]
+    valid_idx = ranges <= max_range
+    valid_ranges = ranges[valid_idx]
+    valid_angles = angles[valid_idx]
+    
+    # transformingg to map coordinates for all particles
+    z_in_map = ranges2cells_parallel(valid_ranges, valid_angles, x_poses, gridmap, map_res)
+    
+    # Counting beams that land outside the map
+    map_height, map_width = gridmap.shape
+    
+    for p in range(B):
+        for i in range(z_in_map.shape[2]):
+            x_map = z_in_map[p, 0, i]
+            y_map = z_in_map[p, 1, i]
+            
+            # Compute probabilty for those outside beam occurences.
+            if x_map < 0 or x_map >= map_width or y_map < 0 or y_map >= map_height:
+                weights[p] *= p_outside
+            else:
+                # Obtain probabilties from beams that end within the gridmap
+                p_ij = likelihood_map[y_map, x_map]
+                weights[p] *= p_ij
+    
+    # Computeing final weight by combining both subsets of beams.
+    
     ##END_STUDENT_CODE
     shape_check("weights",weights,(B,))
     return weights
 
 def low_variance_resampler_parallel(particles, weights):
     ##STUDENT_CODE: #TODO Q3: Implement the low variance resampling strategy
-
-    N = particles.shape[0]
-    weights = weights / np.sum(weights)
-    cw = np.cumsum(weights)
-
+    
+    N = len(particles)
+    resampled_particles = np.zeros_like(particles)
+    resampled_idx = np.zeros(N, dtype=int)
+    
     # Compute random resample_offset in range [0:1/N)
-    resample_offset = np.random.uniform(0, 1 / N)
-
+    resample_offset = np.random.uniform(0, 1.0/N)
+    
     # N evenenly distributed bins [0,1) shifted by offset_start
-    bins = resample_offset + np.arange(N) / N
-
+    cumulative_weights = np.cumsum(weights)
+    targets = resample_offset + np.arange(N) * (1.0/N)
+    
     # Find first index of cummulative weights that overlay the left bin border
-    resampled_idx = np.searchsorted(cw, bins)
-
     # DO not loop over number of bins!
+    resampled_idx = np.searchsorted(cumulative_weights, targets)
+    resampled_idx = np.clip(resampled_idx, 0, N-1)
     resampled_particles = particles[resampled_idx]
-
-
+    
     ##END_STUDENT_CODE
     shape_check("resampled_particles",resampled_particles,(N,3))
     shape_check("resampled_idx",resampled_idx,(N,))
@@ -724,7 +692,7 @@ def plot_parallelization_comparison(
 
     data = pickle.load(
         open(
-            "/home/lobmaier/TEACHING/exercises-sse/2025/ex06-monte-carlo-localization/solution/dataset_mit_csail.p",
+            "dataset_mit_csail.p",
             "rb",
         )
     )
